@@ -186,7 +186,7 @@ const attemptBack = async () => {
 };
 ```
 
-`deriveLockedForVote` reuses the SAME locked check `sortUnlockedFirst`
+`isReportLocked` reuses the SAME locked check `sortUnlockedFirst`
 already computes internally (`isMonthly ? monthlyCardState(...) : isYearly ?
 yearlyCardState(...) : deriveOneTimeCardState(...)`, state === "none") — pull
 that predicate out of `sortUnlockedFirst` in `lib/reports-logic.ts` into its
