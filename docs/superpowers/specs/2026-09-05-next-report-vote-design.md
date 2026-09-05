@@ -147,71 +147,91 @@ voteNextReport: (reportKey: string) =>
   request<{ alreadyVoted: boolean }>('/v1/reports/next-vote', { method: 'POST', body: { reportKey }, auth: true }),
 ```
 
-**`app/reports/[id]/page.tsx`** — extend `attemptBack()`. Needs the
-catalogue (for locked/upcoming keys) fetched lazily, only when actually
-about to decide:
+**`app/reports/[id]/page.tsx`**. Important existing-code wrinkle found while
+drafting this: the on-screen back arrow's `attemptBack()` is NOT the only
+exit path — hardware back (Android/Capacitor) goes through the separate
+`useDismissOnBackPress(armed && !showRatingModal, openRatingModalForBack)`
+stack hook (`providers/back-handler-provider.tsx`), and when `armed` is
+false that hook is inactive, so hardware back falls through to native
+default navigation WITHOUT ever calling `attemptBack()`. A lazily-fetched
+catalogue (fetched only inside `attemptBack()`, as originally sketched)
+would therefore never even get a chance to run on most hardware-back exits.
+Fix: prefetch the catalogue eagerly once the report is ready and the user
+hasn't voted, so a plain synchronous boolean is available to BOTH the
+on-screen handler and the hardware-back hook's `active` condition:
 
 ```ts
 const { user } = useAuth();
-const [showNextReportModal, setShowNextReportModal] = useState(false);
-const [upcomingReportKeys, setUpcomingReportKeys] = useState<string[] | null>(null);
+const [upcomingReportKeys, setUpcomingReportKeys] = useState<string[]>([]);
+const [nextReportVoteSubmitted, setNextReportVoteSubmitted] = useState(false);
 
-const attemptBack = async () => {
+useEffect(() => {
+  if (!ready || !user || user.nextReportVote) return;
+  let cancelled = false;
+  reportsApi
+    .catalogue()
+    .then(({ reports }) => {
+      if (!cancelled) setUpcomingReportKeys(reports.filter(isReportLocked).map((r) => r.key));
+    })
+    .catch(() => {}); // fail open — the prompt simply never offers if this fails
+  return () => {
+    cancelled = true;
+  };
+}, [ready, user]);
+
+const offerNextReportVote =
+  !nextReportVoteSubmitted && !!user && !user.nextReportVote && upcomingReportKeys.length > 0;
+
+const [showNextReportModal, setShowNextReportModal] = useState(false);
+const openNextReportModalForBack = () => setShowNextReportModal(true);
+
+// Mutually exclusive with the rating sheet, on EITHER exit path — rating wins if both are due.
+useDismissOnBackPress(
+  (armed || offerNextReportVote) && !showRatingModal && !showNextReportModal,
+  () => (armed ? openRatingModalForBack() : openNextReportModalForBack()),
+);
+
+const attemptBack = () => {
   if (armed && !showRatingModal) {
     openRatingModalForBack();
     return;
   }
-  if (!showNextReportModal && user && !user.nextReportVote) {
-    if (upcomingReportKeys === null) {
-      // Fail open on a network error — never strand the user on the page
-      // over a nice-to-have prompt, same idiom as ReportRatingSheet's submit.
-      try {
-        const { reports } = await reportsApi.catalogue();
-        const locked = reports.filter((r) => isReportLocked(r)).map((r) => r.key);
-        setUpcomingReportKeys(locked);
-        if (locked.length > 0) {
-          setShowNextReportModal(true);
-          return;
-        }
-      } catch {
-        router.back();
-        return;
-      }
-    } else if (upcomingReportKeys.length > 0) {
-      setShowNextReportModal(true);
-      return;
-    }
+  if (offerNextReportVote && !showNextReportModal) {
+    openNextReportModalForBack();
+    return;
   }
+  router.back();
+};
+
+const closeNextReportModal = () => {
+  setShowNextReportModal(false);
+  // Instant local gate, same reasoning as hasRatedReport's localStorage check for the rating
+  // sheet: closes the small window before a `refresh()` round-trip lands user.nextReportVote,
+  // during which a second back-tap could otherwise reopen the sheet.
+  setNextReportVoteSubmitted(true);
   router.back();
 };
 ```
 
-`isReportLocked` reuses the SAME locked check `sortUnlockedFirst`
-already computes internally (`isMonthly ? monthlyCardState(...) : isYearly ?
+`isReportLocked` reuses the SAME locked check `sortUnlockedFirst` already
+computes internally (`isMonthly ? monthlyCardState(...) : isYearly ?
 yearlyCardState(...) : deriveOneTimeCardState(...)`, state === "none") — pull
 that predicate out of `sortUnlockedFirst` in `lib/reports-logic.ts` into its
 own exported `isReportLocked(entry)` so both call sites share it, rather
 than duplicating the branch.
 
-`useDismissOnBackPress` registration for the new sheet mirrors the rating
-sheet's (`openRatingModalForBack` / `showRatingModal` pair) — the existing
-`armed && !showRatingModal` hook call becomes an `armed && !showRatingModal
-&& !showNextReportModal` guard so the two overlays never both claim the back
-stack.
+Unlike the rating sheet, the next-report sheet has no separate manual-open
+trigger (no always-visible button) — it's reached only through a back
+attempt, so `closeNextReportModal` unconditionally calls `router.back()`, no
+`ratingModalBacks`-style flag needed.
 
 Render, right after the existing `{showRatingModal && <ReportRatingSheet .../>}`
 line:
 
 ```tsx
 {
-  showNextReportModal && upcomingReportKeys && (
-    <NextReportSheet
-      reportKeys={upcomingReportKeys}
-      onClose={() => {
-        setShowNextReportModal(false);
-        router.back();
-      }}
-    />
+  showNextReportModal && (
+    <NextReportSheet reportKeys={upcomingReportKeys} onClose={closeNextReportModal} />
   );
 }
 ```
@@ -267,13 +287,20 @@ desc (already sorted server-side). Empty state: "No votes yet." Not a
 
 ## Self-check
 
-One backend test (`src/modules/users/users.repo.test.ts` or wherever the
-existing gemstone-unlock tests live) exercising `recordNextReportVote`'s
-idempotency: first call for a fresh user returns `true` and sets the column;
-a second call with a DIFFERENT reportKey returns `false` and leaves the
-column at the FIRST value. This is the one invariant the entire "don't ask
-again" UX depends on — if it breaks, votes silently overwrite instead of
-locking.
+This codebase has no DB-hitting test harness at all (confirmed: zero files
+under `test/` import `config/db.js` directly) — repo-layer functions like
+`unlockGemstoneForUser`/`unlockHouseForUser` are untested at that layer, and
+business logic is tested with the repo mocked out instead (see
+`test/report-ratings-service.spec.ts`). Matching that convention:
+`test/reports-service.spec.ts` gets a `describe('voteNextReport', ...)`
+block that mocks `recordNextReportVote` and asserts the two outcomes the
+whole "don't ask again" UX depends on — a fresh vote returns
+`{alreadyVoted: false}`, a repeat vote (repo mock returns `false`) returns
+`{alreadyVoted: true}` without throwing — plus the unknown-report-key 404.
+The repo function's own `WHERE ... IS NULL` correctness is verified manually
+against a running dev server (curl twice, confirm the second call is a
+no-op) rather than by an automated test, same as its gemstone/house
+siblings.
 
 ## Explicitly out of scope (YAGNI)
 
