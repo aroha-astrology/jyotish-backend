@@ -204,6 +204,7 @@ export function toUserDto(
     appVersion: row.appVersion,
     platform: row.platform,
     walletBalancePaise: row.walletBalancePaise,
+    nextReportVote: row.nextReportVote,
     // `profile.unlockedHouses` is already normalized to `[]` (never null) by
     // resolveProfileContext — no separate null-fallback needed here.
     unlockedHouses: profile.unlockedHouses,

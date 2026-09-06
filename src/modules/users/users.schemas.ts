@@ -273,6 +273,7 @@ export const UserSchema = z
     platform: PlatformSchema.nullable(),
     walletBalancePaise: z.number().int().describe('Wallet balance in paise (100 paise = Rs 1)'),
     unlockedHouses: z.array(z.number().int()),
+    nextReportVote: z.string().nullable(),
     gemstoneUnlocked: z
       .boolean()
       .describe('True once the user has spent wallet balance to unlock the gemstone report'),
