@@ -23,6 +23,7 @@ import {
   AdminReportGenerationsBulkResponseSchema,
   AdminReportRatingsQuerySchema,
   AdminReportRatingsResponseSchema,
+  AdminNextReportVotesResponseSchema,
   AdminReferralsResponseSchema,
   AdminRecurringUsersResponseSchema,
   AdminUserDemographicsResponseSchema,
@@ -46,6 +47,7 @@ import {
   resetReportGenerationsBulk,
   deleteReportGenerationsBulk,
   getReportRatings,
+  getNextReportVoteCounts,
   getReferrals,
   getRecurringUsers,
   getUserDemographics,
@@ -499,6 +501,33 @@ adminRouter.openapi(reportRatingsRoute, async (c) => {
   const page = await getReportRatings(reportKey, limit, offset);
   await auditRead(c, 'GET /v1/admin/report-ratings', { reportKey, offset, limit });
   return c.json(page, 200);
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/next-report-votes                                               */
+/* -------------------------------------------------------------------------- */
+
+const nextReportVotesRoute = createRoute({
+  method: 'get',
+  path: '/admin/next-report-votes',
+  tags: ['Admin'],
+  summary: 'Vote counts for "which report should we prepare next", most-requested first',
+  security: [{ bearerAuth: [] }],
+  middleware: [requireAdmin] as const,
+  responses: {
+    200: {
+      description: 'Vote counts',
+      content: { 'application/json': { schema: AdminNextReportVotesResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    403: errorResponse('Admin access required'),
+  },
+});
+
+adminRouter.openapi(nextReportVotesRoute, async (c) => {
+  const result = await getNextReportVoteCounts();
+  await auditRead(c, 'GET /v1/admin/next-report-votes', {});
+  return c.json(result, 200);
 });
 
 /* -------------------------------------------------------------------------- */

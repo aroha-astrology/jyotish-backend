@@ -286,6 +286,16 @@ export const AdminReportRatingsResponseSchema = z
   })
   .openapi('AdminReportRatingsResponse');
 
+const AdminNextReportVoteRowSchema = z.object({
+  reportKey: z.string(),
+  label: z.string(),
+  count: z.number(),
+});
+
+export const AdminNextReportVotesResponseSchema = z
+  .object({ votes: z.array(AdminNextReportVoteRowSchema) })
+  .openapi('AdminNextReportVotesResponse');
+
 /* -------------------------------------------------------------------------- */
 /* GET /admin/referrals                                                        */
 /* -------------------------------------------------------------------------- */

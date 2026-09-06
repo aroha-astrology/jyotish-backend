@@ -1,4 +1,5 @@
 import { FEATURE_REGISTRY, isKnownFeatureKey } from '../../config/features.js';
+import { getReportDef } from '../../config/reports.js';
 import { Errors } from '../../lib/errors.js';
 import { resolveFeatures, invalidateFeatureCache } from '../features/features.service.js';
 import { upsertFeatureOverride } from '../features/features.repo.js';
@@ -9,6 +10,7 @@ import {
   listUsersPage,
   countUsersMatching,
   listReferrals,
+  listNextReportVoteCounts,
   addWalletBalance,
   deductWalletBalance,
   findActiveUserById,
@@ -378,6 +380,18 @@ export async function getReportRatings(
   const { rows, total } = await listAllReportRatings(reportKey, limit, offset);
   const ratings = rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
   return { ratings, total, offset, limit };
+}
+
+/** Vote counts for "which report should we prepare next", most-requested
+ * first, with each report's display label resolved from the catalogue. */
+export async function getNextReportVoteCounts() {
+  const rows = await listNextReportVoteCounts();
+  const votes = rows.map((r) => ({
+    reportKey: r.reportKey,
+    label: getReportDef(r.reportKey)?.label ?? r.reportKey,
+    count: r.count,
+  }));
+  return { votes };
 }
 
 /* -------------------------------------------------------------------------- */
