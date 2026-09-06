@@ -1240,6 +1240,18 @@ export async function listReferrals() {
   }));
 }
 
+/** Vote counts grouped by report key, most-requested first — active
+ * (non-deleted) users only. Powers the admin "Next Report Requests" card. */
+export async function listNextReportVoteCounts(): Promise<{ reportKey: string; count: number }[]> {
+  const rows = await db
+    .select({ reportKey: users.nextReportVote, count: count() })
+    .from(users)
+    .where(and(isNotNull(users.nextReportVote), isNull(users.deletedAt)))
+    .groupBy(users.nextReportVote)
+    .orderBy(desc(count()));
+  return rows as { reportKey: string; count: number }[];
+}
+
 /**
  * `pricePaise` is resolved by the caller (users.service.ts `unlockHouse`) from
  * the admin-set feature price — this function must never invent its own, or the
@@ -1322,6 +1334,19 @@ export async function unlockGemstoneForUser(
     await consumeExpiringCredits(tx, userId, pricePaise);
     return true;
   });
+}
+
+/** Atomically records the vote iff the user hasn't voted before. Returns
+ * false (not an error) when a vote already exists — the caller treats a
+ * repeat submission as a harmless no-op, not a conflict, since nothing
+ * scarce is being spent here (unlike unlockGemstoneForUser). */
+export async function recordNextReportVote(userId: string, reportKey: string): Promise<boolean> {
+  const [row] = await db
+    .update(users)
+    .set({ nextReportVote: reportKey, nextReportVotedAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.nextReportVote)))
+    .returning({ id: users.id });
+  return !!row;
 }
 
 /**
