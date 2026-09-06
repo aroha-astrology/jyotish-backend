@@ -366,6 +366,15 @@ export const users = pgTable(
     /** Body weight (kg) captured at gemstone-unlock time — drives the recommended-carat calculation (see recommendedGemstoneCarats in astro-engine/gemstones.ts). Null for users who unlocked before this field existed, or never wore a physical gemstone. Stored for reuse elsewhere (not just this one calculation). */
     gemstoneWeightKg: doublePrecision('gemstone_weight_kg'),
 
+    // --- next-report vote (2026-09-05) --------------------------------------
+    // One-time, account-level: which report the user said they want next, asked
+    // on exit from a report they just read (see app/reports/[id]/page.tsx on the
+    // frontend). Null = never asked, or asked and the prompt is still pending —
+    // the WHERE ... IS NULL guard in recordNextReportVote (users.repo.ts) is the
+    // real "don't ask again" enforcement, not any client-side flag.
+    nextReportVote: text('next_report_vote'),
+    nextReportVotedAt: timestamp('next_report_voted_at', { withTimezone: true }),
+
     // --- multi-profile (2026-07-18) ----------------------------------------
     // NULL = the primary/self profile (this users row) is currently active;
     // a non-null id points at a row in birth_profiles. birthProfiles is
