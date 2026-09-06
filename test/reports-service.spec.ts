@@ -34,6 +34,7 @@ const state = vi.hoisted(() => {
     deductWalletBalance: vi.fn(),
     addWalletBalance: vi.fn(),
     findActiveUserById: vi.fn(),
+    recordNextReportVote: vi.fn(),
     findKundliByUserId: vi.fn(),
     resolveProfileContext: vi.fn(),
     computeMetrology: vi.fn(),
@@ -79,6 +80,7 @@ vi.mock('../src/modules/users/users.repo.js', () => ({
   deductWalletBalance: state.deductWalletBalance,
   addWalletBalance: state.addWalletBalance,
   findActiveUserById: state.findActiveUserById,
+  recordNextReportVote: state.recordNextReportVote,
 }));
 
 vi.mock('../src/modules/kundli/kundli.repo.js', () => ({
@@ -137,6 +139,7 @@ const {
   regenerateReportContent,
   hashSections,
   MAX_REPORT_GENERATION_ATTEMPTS,
+  voteNextReport,
 } = await import('../src/modules/reports/reports.service.js');
 
 function makeUser(overrides: Partial<UserRow> = {}): UserRow {
@@ -1367,7 +1370,11 @@ describe('buildReportScoreContext — partnerName', () => {
   });
 
   it('is null when input has no name', async () => {
-    const ctx = await buildReportScoreContext({ userId: 'u1', birthProfileId: null, input: null }, null, null);
+    const ctx = await buildReportScoreContext(
+      { userId: 'u1', birthProfileId: null, input: null },
+      null,
+      null,
+    );
     expect(ctx.partnerName).toBeNull();
   });
 });
@@ -1439,7 +1446,13 @@ describe('getReportCatalogueForUser', () => {
       makeReportRow({
         id: 'older',
         reportKey: 'marriage',
-        input: { dateOfBirth: '1988-02-02', timeOfBirth: '06:00', latitude: 1, longitude: 1, timezone: 'UTC' },
+        input: {
+          dateOfBirth: '1988-02-02',
+          timeOfBirth: '06:00',
+          latitude: 1,
+          longitude: 1,
+          timezone: 'UTC',
+        },
         createdAt: new Date('2025-01-01T00:00:00Z'),
       }),
     ]);
@@ -1459,7 +1472,9 @@ describe('getReportCatalogueForUser', () => {
 
   it('is null for every other report key, and for marriage with no partner input on file', async () => {
     state.resolveFeaturesForUser.mockResolvedValue({});
-    state.listReportsForUser.mockResolvedValue([makeReportRow({ reportKey: 'marriage', input: null })]);
+    state.listReportsForUser.mockResolvedValue([
+      makeReportRow({ reportKey: 'marriage', input: null }),
+    ]);
 
     const catalogue = await getReportCatalogueForUser(makeUser(), null);
     expect(catalogue.find((c) => c.key === 'marriage')!.lastSpouseDetails).toBeNull();
@@ -2041,5 +2056,29 @@ describe('regenerateReportContent — bulk admin refresh of an already-purchased
 
     await expect(regenerateReportContent(row)).rejects.toThrow('LLM exploded');
     expect(state.overwriteReadyReportContent).not.toHaveBeenCalled();
+  });
+});
+
+describe('voteNextReport', () => {
+  beforeEach(() => {
+    state.recordNextReportVote.mockReset();
+  });
+
+  it('rejects an unknown report key without calling the repo', async () => {
+    await expect(voteNextReport('user-1', 'not_a_real_key')).rejects.toMatchObject({ status: 404 });
+    expect(state.recordNextReportVote).not.toHaveBeenCalled();
+  });
+
+  it('records a first-ever vote and reports alreadyVoted: false', async () => {
+    state.recordNextReportVote.mockResolvedValue(true);
+    const result = await voteNextReport('user-1', 'wealth');
+    expect(result).toEqual({ alreadyVoted: false });
+    expect(state.recordNextReportVote).toHaveBeenCalledWith('user-1', 'wealth');
+  });
+
+  it('reports alreadyVoted: true when the user has voted before, without throwing', async () => {
+    state.recordNextReportVote.mockResolvedValue(false);
+    const result = await voteNextReport('user-1', 'wealth');
+    expect(result).toEqual({ alreadyVoted: true });
   });
 });

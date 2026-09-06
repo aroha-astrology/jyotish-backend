@@ -26,7 +26,12 @@ import {
 } from '../../config/reports.js';
 import { assignSectionIds } from '../../config/report-sections.js';
 import { resolveFeaturesForUser } from '../features/features.service.js';
-import { deductWalletBalance, addWalletBalance, findActiveUserById } from '../users/users.repo.js';
+import {
+  deductWalletBalance,
+  addWalletBalance,
+  findActiveUserById,
+  recordNextReportVote,
+} from '../users/users.repo.js';
 import { findKundliByUserId } from '../kundli/kundli.repo.js';
 import { todayForApp } from '../horoscope/horoscope.service.js';
 import { resolveProfileContext } from '../birth-profiles/profile-context.js';
@@ -1695,4 +1700,22 @@ export async function regenerateReportVerdict(row: ReportRow): Promise<'regenera
     model: MODEL,
   });
   return 'regenerated';
+}
+
+/**
+ * Records the one-time "which report do you want next" vote — see
+ * db/schema.ts's nextReportVote doc comment. Idempotent: a repeat vote (from
+ * a client that somehow still thinks it hasn't asked) is reported back as
+ * `alreadyVoted: true` rather than thrown as a conflict, since nothing
+ * scarce is being spent here.
+ */
+export async function voteNextReport(
+  userId: string,
+  reportKey: string,
+): Promise<{ alreadyVoted: boolean }> {
+  if (!getReportDef(reportKey)) {
+    throw Errors.notFound(`Unknown report key: ${reportKey}`);
+  }
+  const recorded = await recordNextReportVote(userId, reportKey);
+  return { alreadyVoted: !recorded };
 }
