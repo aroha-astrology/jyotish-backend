@@ -200,3 +200,11 @@ export const ReportIdParamSchema = z.object({
     .uuid()
     .openapi({ param: { name: 'id', in: 'path' } }),
 });
+
+export const VoteNextReportBodySchema = z
+  .object({ reportKey: z.string() })
+  .openapi('VoteNextReportBody');
+
+export const VoteNextReportResponseSchema = z
+  .object({ alreadyVoted: z.boolean() })
+  .openapi('VoteNextReportResponse');

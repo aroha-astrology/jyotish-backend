@@ -14,6 +14,8 @@ import {
   ReportIdParamSchema,
   ReportReadySchema,
   ReportStatsResponseSchema,
+  VoteNextReportBodySchema,
+  VoteNextReportResponseSchema,
 } from './reports.schemas.js';
 import {
   getReportCatalogueForUser,
@@ -22,6 +24,7 @@ import {
   getReportStats,
   previewReport,
   purchaseReport,
+  voteNextReport,
 } from './reports.service.js';
 import { RateReportBodySchema, RateReportResponseSchema } from './report-ratings.schemas.js';
 import { rateReport } from './report-ratings.service.js';
@@ -274,4 +277,36 @@ reportsRouter.openapi(rateReportRoute, async (c) => {
     ...(body.comment ? { comment: body.comment } : {}),
   });
   return c.json(result, 201);
+});
+
+const voteNextReportRoute = createRoute({
+  method: 'post',
+  path: '/reports/next-vote',
+  tags: ['Reports'],
+  summary: 'One-time vote for which report the user wants prepared next',
+  description:
+    'Idempotent — voting again after an existing vote is a harmless no-op, reported back as ' +
+    '`alreadyVoted: true` rather than a conflict.',
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: { 'application/json': { schema: VoteNextReportBodySchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Vote recorded (or already existed)',
+      content: { 'application/json': { schema: VoteNextReportResponseSchema } },
+    },
+    401: errorResponse('Unauthorized'),
+    404: errorResponse('Unknown report key'),
+  },
+});
+
+reportsRouter.openapi(voteNextReportRoute, async (c) => {
+  const user = c.get('user');
+  const { reportKey } = c.req.valid('json');
+  const result = await voteNextReport(user.id, reportKey);
+  return c.json(result, 200);
 });
