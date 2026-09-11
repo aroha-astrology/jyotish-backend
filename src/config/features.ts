@@ -479,6 +479,27 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
     defaultEnabled: true,
     defaultPricePaise: 2100,
   },
+  // One-time payout for granting OS notification permission. Server-verified:
+  // an FCM token cannot exist without the grant, so registering one is the
+  // proof — see device-tokens.routes.ts. Ships dark like every new card.
+  {
+    key: 'rewards.notificationsGrant',
+    label: 'Reward — enable notifications',
+    group: 'rewards',
+    defaultEnabled: false,
+    defaultPricePaise: 2500,
+  },
+  // One-time payout for granting OS location permission. NOT server-verifiable
+  // — we deliberately store no coordinates, so this trusts the client's word
+  // (POST /v1/rewards/location-granted). Bounded: once per user, wallet credit
+  // only. Enable this one knowing that.
+  {
+    key: 'rewards.locationGrant',
+    label: 'Reward — enable location',
+    group: 'rewards',
+    defaultEnabled: false,
+    defaultPricePaise: 2500,
+  },
   // ai — model pickers, not toggleable product surface. See `modelOptions` on FeatureDef for
   // what the enabled toggle means on these rows (off = fall back to the global GEMINI_MODEL).
   // Both ship DISABLED so nothing changes until a model is deliberately picked in the

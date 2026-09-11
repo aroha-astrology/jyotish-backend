@@ -1,3 +1,5 @@
+import { PERMISSION_REWARD_REASONS } from './permission-rewards.js';
+
 /**
  * One-time "claim a wallet bonus" campaigns — Independence Day today, whatever
  * festival/promo is next later. One entry here (+ a matching `referral.*` key
@@ -54,4 +56,16 @@ export function findClaimCampaign(key: string): ClaimCampaignDef | undefined {
   return CLAIM_CAMPAIGNS.find((c) => c.key === key);
 }
 
-export const CLAIM_CAMPAIGN_KEYS: readonly string[] = CLAIM_CAMPAIGNS.map((c) => c.key);
+/**
+ * Every ledger `reason` that `/v1/me` should report back as already claimed.
+ *
+ * This is only ever passed to `getClaimedCampaignKeys()`, never used to decide
+ * what is claimable, so the permission rewards ride along here to light up
+ * their claimed state on the client without needing their own DTO field. They
+ * are not campaigns and deliberately have no date window — see
+ * config/permission-rewards.ts.
+ */
+export const CLAIM_CAMPAIGN_KEYS: readonly string[] = [
+  ...CLAIM_CAMPAIGNS.map((c) => c.key),
+  ...PERMISSION_REWARD_REASONS,
+];
